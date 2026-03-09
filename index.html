@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>如意雲運行圖 · 興趣螺旋神諭卡</title>
+    <!-- 增加預先連線，加速字體載入 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- 引入 html2canvas (移除可能導致載入失敗的 integrity 標籤) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Serif TC', serif;
+            background-color: #FAFAFA;
+            background-image: radial-gradient(#FEE2E2 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .hidden-screen { display: none !important; }
+
+        /* 卡牌翻轉動畫設定 */
+        .card-container {
+            perspective: 1000px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 320px;
+            aspect-ratio: 1 / 1; 
+            margin: 0 auto;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.8s cubic-bezier(0.4, 0.0, 0.2, 1);
+            transform-style: preserve-3d;
+            /* [優化] 避免 GPU 合成層重建：提前宣告 transform 變化，讓瀏覽器保留獨立圖層 */
+            will-change: transform; 
+        }
+        .card-container.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: white;
+            /* [優化] 減少硬體加速帶來的毛邊現象 */
+            transform: translateZ(0);
+        }
+        .card-front {
+            transform: rotateY(180deg);
+        }
+        .card-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 12px;
+        }
+
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .btn-primary {
+            background-color: #B91C1C;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background-color: #991B1B;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+    <script>
+        // --- 圖片遺失時，自動用程式碼生成的本地提示圖 ---
+        function handleImgError(img, type, numStr) {
+            if (img.src.startsWith('data:image')) return;
+            
+            let isDetail = img.getAttribute('data-current') === 'detail';
+            let currentText = '';
+            
+            // 加入對 gif 動畫圖檔與 QR Code 缺失的判斷
+            if (type === 'gif') {
+                currentText = '缺少 666.gif';
+            } else if (type === 'back') {
+                currentText = '缺少 000.jpg';
+            } else if (type === 'qr') {
+                currentText = '缺少 999.png';
+            } else {
+                currentText = isDetail ? `缺少 ${numStr}-2.jpg` : `缺少 ${numStr}-1.jpg`;
+            }
+
+            let bgColor = (type === 'back' || type === 'gif') ? '#B91C1C' : (type === 'qr' ? '#E5E7EB' : '#FFFFFF');
+            let textColor = (type === 'back' || type === 'gif') ? '#FFFFFF' : (type === 'qr' ? '#4B5563' : '#B91C1C');
+            let stroke = (type === 'back' || type === 'gif' || type === 'qr') ? '' : 'stroke="%23B91C1C" stroke-width="10"';
+            
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="567" height="567"><rect width="100%" height="100%" fill="${bgColor}" ${stroke}/><text x="50%" y="50%" font-size="40" font-family="sans-serif" font-weight="bold" fill="${textColor}" text-anchor="middle" dominant-baseline="middle">${currentText}</text></svg>`;
+            
+            img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        }
+    </script>
+</head>
+<body class="text-gray-800 min-h-screen flex flex-col">
+
+    <!-- 頁首導覽列 -->
+    <header class="bg-white shadow-sm py-4 border-b-4 border-red-700">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <h1 class="text-xl md:text-2xl font-bold text-red-700 cursor-pointer" onclick="goHome()">
+                ☁️ 如意雲運行圖
+            </h1>
+            <div class="flex items-center gap-3">
+                <button id="sound-toggle-btn" onclick="toggleSound()" class="text-sm px-4 py-1.5 rounded-full bg-gray-500 text-white hover:opacity-80 transition shadow-sm font-bold flex items-center gap-1">
+                    🔇 音樂: 關
+                </button>
+                <button onclick="goHome()" class="text-sm text-gray-500 hover:text-red-700 font-bold">回到首頁</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-4xl relative">
+
+        <!-- ==================== 1. 首頁 (說明與選擇模式) ==================== -->
+        <section id="screen-home" class="fade-in">
+            <div class="text-center mb-10">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">興趣螺旋神諭卡</h2>
+                <p class="text-lg text-gray-600 italic">順時推進，逆時調整。虛時養能，實時行動。</p>
+            </div>
+
+            <div class="bg-white p-6 md:p-8 rounded-xl shadow-md mb-10 border-l-4 border-red-700">
+                <h3 class="text-xl font-bold mb-3 text-red-800">這套卡牌在做什麼？</h3>
+                <p class="mb-4 leading-relaxed">
+                    這不是一套「預測未來」的卡牌，而是一套幫助你<span class="font-bold text-red-600">覺察當下狀態、調整行動節律</span>的工具。<br>
+                    當你讀懂順逆、虛實、內外的節律，你就能用更少的力，做更對的事。
+                </p>
+                <p class="text-sm text-gray-500 bg-gray-50 p-3 rounded">
+                    <strong>使用原則：</strong> 保持輕鬆、如實面對、每次只做一個小動作。卡牌的力量來自微小但正確的動作累積。
+                </p>
+                <div class="mt-6 text-center">
+                    <button onclick="showManual()" class="inline-flex items-center gap-2 text-red-700 font-bold hover:text-red-900 border-b-2 border-red-700 hover:border-red-900 pb-1 transition transform hover:scale-105">
+                        📖 初學者詳細介紹 (完整說明書)
+                    </button>
+                </div>
+            </div>
+
+            <h3 class="text-2xl font-bold text-center mb-6">請選擇使用方式</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 模式 1 -->
+                <button onclick="startMode('daily')" class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-left group border border-gray-100 hover:border-red-300">
+                    <div class="w-12 h-12 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xl font-bold mb-4 group-hover:scale-110 transition">壹</div>
+                    <h4 class="text-xl font-bold mb-2 group-hover:text-red-700">每日一抽</h4>
+                    <p class="text-sm text-gray-600">每天早上或需要指引時使用，了解此刻最適合的運行方式。(單卡)</p>
+                </button>
+                <!-- 模式 2 -->
+                <button onclick="startMode('question')" class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-left group border border-gray-100 hover:border-red-300">
+                    <div class="w-12 h-12 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xl font-bold mb-4 group-hover:scale-110 transition">貳</div>
+                    <h4 class="text-xl font-bold mb-2 group-hover:text-red-700">問題指引</h4>
+                    <p class="text-sm text-gray-600">當遇到具體問題（如：該前進還是休息？）時使用，按提示行動。(單卡)</p>
+                </button>
+                <!-- 模式 3 -->
+                <button onclick="startMode('double')" class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition text-left group border border-gray-100 hover:border-red-300">
+                    <div class="w-12 h-12 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xl font-bold mb-4 group-hover:scale-110 transition">參</div>
+                    <h4 class="text-xl font-bold mb-2 group-hover:text-red-700">雙卡法 (進階)</h4>
+                    <p class="text-sm text-gray-600">分別抽取「內在狀態」與「外在狀態」，觀察兩者關係與是否一致。(雙卡)</p>
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 2. 抽牌準備區 ==================== -->
+        <section id="screen-draw" class="hidden-screen fade-in flex flex-col items-center justify-center min-h-[60vh]">
+            <h2 id="draw-title" class="text-3xl font-bold text-gray-900 mb-2">請靜下心來</h2>
+            <p id="draw-subtitle" class="text-lg text-gray-600 mb-10 text-center max-w-md">默念您的問題，準備好後點擊下方按鈕抽牌。</p>
+            
+            <div class="w-64 h-64 rounded-xl shadow-2xl overflow-hidden mb-8 transform transition hover:scale-105 cursor-pointer" onclick="executeDraw()">
+                <!-- [優化] 改為顯示 666.gif 動畫圖檔 -->
+                <img src="cards/666.gif" alt="抽牌準備動畫" class="w-full h-full object-cover" decoding="async" onerror="handleImgError(this, 'gif', '666')">
+            </div>
+
+            <button onclick="executeDraw()" class="btn-primary px-8 py-3 rounded-full text-lg font-bold tracking-wider">
+                進行抽牌
+            </button>
+        </section>
+
+        <!-- ==================== 3. 抽牌結果區 ==================== -->
+        <section id="screen-result" class="hidden-screen fade-in">
+            <!-- 將需要被截圖的區域用 capture-area 包裝起來 -->
+            <div id="capture-area" class="bg-[#FAFAFA] p-4 md:p-8 rounded-2xl relative">
+                <div class="text-center mb-8">
+                    <h2 id="result-title" class="text-3xl font-bold text-gray-900 mb-2">你的指引</h2>
+                    <p id="result-subtitle" class="text-gray-600">點擊卡牌翻開，點擊下方按鈕查看詳細說明。</p>
+                </div>
+
+                <!-- 動態生成卡牌的容器 -->
+                <div id="cards-container" class="flex flex-col md:flex-row justify-center items-center md:items-start gap-10 md:gap-16">
+                    <!-- JavaScript 將在這裡注入卡牌 HTML -->
+                </div>
+
+                <!-- 截圖專用的底部區塊 (預設隱藏，內含時間與 QR Code) -->
+                <div id="capture-footer" class="hidden mt-8 pt-6 border-t-2 border-red-100 flex items-end justify-between w-full">
+                    <div class="text-left pb-1">
+                        <h3 class="text-lg font-bold text-red-800 mb-1">如意雲神諭卡</h3>
+                        <p class="text-xs text-gray-600">順時推進，逆時調整</p>
+                        <p id="capture-timestamp" class="text-xs text-gray-400 mt-2 font-mono"></p>
+                    </div>
+                    <div class="flex flex-col items-center bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+                        <!-- 絕對移除 loading="lazy" 與 decoding="async"，強制瀏覽器提早載入，確保截圖 100% 出現 -->
+                        <img src="cards/999.png" alt="QR Code" class="w-20 h-20 md:w-24 md:h-24 object-cover" onerror="handleImgError(this, 'qr', '999')">
+                        <p class="text-[10px] text-gray-500 mt-1 font-bold tracking-widest">掃碼測驗</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-12 flex flex-col sm:flex-row justify-center items-center gap-4">
+                <button id="screenshot-btn" onclick="takeScreenshot()" class="px-6 py-2 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition shadow-md flex items-center gap-2">
+                    📸 拍照分享 / 存檔
+                </button>
+                <button onclick="goHome()" class="px-6 py-2 border-2 border-red-700 text-red-700 hover:bg-red-50 font-bold rounded-full transition flex items-center gap-2">
+                    🔄 重新抽牌
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 4. 完整說明書 ==================== -->
+        <section id="screen-manual" class="hidden-screen fade-in bg-white p-6 md:p-10 rounded-xl shadow-lg border-t-8 border-red-700 mb-8">
+             <div class="flex justify-between items-center mb-8 border-b pb-4">
+                 <h2 class="text-2xl md:text-3xl font-bold text-gray-900">如意雲運行圖卡牌 · 完整說明書</h2>
+                 <button onclick="goHome()" class="text-gray-400 hover:text-red-700 font-bold text-2xl transition">✖</button>
+             </div>
+             
+             <div class="space-y-8 text-gray-700 leading-relaxed text-sm md:text-base">
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">一、產品名稱</h3><p>如意雲運行圖 · 興趣螺旋神諭卡 （Ruyi Cloud Flow Oracle）</p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">二、核心口號</h3><p>順時推進，逆時調整。虛時養能，實時行動。內外對齊，萬事順流。</p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">三、這套卡牌在做什麼？</h3><p>這不是一套「預測未來」的卡牌，而是一套<strong>幫助你覺察當下狀態、調整行動節律</strong>的工具。<br>它基於「如意雲興趣螺旋模型」：你的生活與創造，其實一直在 <strong>順 / 逆 × 虛 / 實 × 內 / 外</strong> 的動態節律中流動。<br>當你讀懂節律，你就能用更少的力，做更對的事。</p></div>
+                
+                <div>
+                    <h3 class="text-lg font-bold text-red-800 mb-2">四、模型結構（簡單理解）</h3>
+                    <p class="mb-3">這套卡牌包含 16種狀態模型，由三組維度組成：</p>
+                    <ul class="list-none space-y-3 bg-gray-50 p-4 rounded">
+                        <li><strong>1. 順轉 / 逆轉（方向）</strong><br>順轉：阻力小、自然、流暢。<br>逆轉：調整、轉向、釋放、重構。<br><span class="text-gray-500 text-sm">👉 這不是好壞，而是節律切換。</span></li>
+                        <li><strong>2. 虛 / 實（節奏）</strong><br>虛：感受、學習、靈感、休息、擴展。<br>實：執行、行動、輸出、落地、重複。<br><span class="text-gray-500 text-sm">👉 這是能量的呼吸。</span></li>
+                        <li><strong>3. 內 / 外（場域）</strong><br>內在場：你的興趣、情緒、意願、狀態。<br>外在場：環境、人際、任務、機會。<br><span class="text-gray-500 text-sm">👉 這是你與世界的關係。</span></li>
+                    </ul>
+                </div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">五、這16張卡在表達什麼？</h3><p>每一張卡代表：你此刻的一個「最佳運行狀態」。<br>它不是命運，而是<strong>當下最合適的運行方式</strong>。</p></div>
+                
+                <div>
+                    <h3 class="text-lg font-bold text-red-800 mb-2">六、如何使用這套卡牌</h3>
+                    <ul class="space-y-3">
+                        <li><strong>方法一：每日一抽（最簡單）</strong><br>每天早上或需要指引時：靜心幾秒，心中默念問題：「我此刻最適合的運行方式是什麼？」 抽出一張卡，閱讀卡面的一句話提示，然後照著去做。</li>
+                        <li><strong>方法二：問題指引抽卡</strong><br>當你遇到問題時（例如：我該繼續推進嗎？我要不要休息？這段關係該如何處理？我是否在走對的方向？），抽一張卡，直接按提示行動。</li>
+                        <li><strong>方法三：雙卡法（進階）</strong><br>抽兩張卡。第一張：內在狀態。第二張：外在狀態。觀察兩者關係：內外是否一致？是否需要調整節奏？</li>
+                    </ul>
+                </div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">七、如何理解卡牌提示語？</h3><p>每張卡都有一句話，例如：「順勢推進，直接行動就是最省力的路徑」<br>請這樣使用它：不用分析、不用解釋、不用懷疑。直接在生活中執行一個<strong>小動作</strong>（例如：寫一句話、打一個電話、整理一個角落、去休息10分鐘）。<br>卡牌的力量來自：<strong>微小但正確的動作累積</strong>。</p></div>
+                
+                <div>
+                    <h3 class="text-lg font-bold text-red-800 mb-2">八、四大狀態的總體理解</h3>
+                    <div class="overflow-x-auto mt-2">
+                        <table class="min-w-full bg-white border border-red-100 rounded text-center shadow-sm">
+                            <thead class="bg-red-50 text-red-900"><tr><th class="py-3 px-4 border-b border-red-100">類型</th><th class="py-3 px-4 border-b border-red-100">核心含義</th><th class="py-3 px-4 border-b border-red-100">你的動作</th></tr></thead>
+                            <tbody>
+                                <tr class="hover:bg-gray-50"><td class="py-2 px-4 border-b border-gray-100">順 × 實</td><td class="py-2 px-4 border-b border-gray-100">順勢推進</td><td class="py-2 px-4 border-b border-gray-100 font-bold text-red-700">去做</td></tr>
+                                <tr class="hover:bg-gray-50"><td class="py-2 px-4 border-b border-gray-100">順 × 虛</td><td class="py-2 px-4 border-b border-gray-100">擴展感受</td><td class="py-2 px-4 border-b border-gray-100 font-bold text-red-700">放鬆打開</td></tr>
+                                <tr class="hover:bg-gray-50"><td class="py-2 px-4 border-b border-gray-100">逆 × 實</td><td class="py-2 px-4 border-b border-gray-100">轉向調整</td><td class="py-2 px-4 border-b border-gray-100 font-bold text-red-700">換方式行動</td></tr>
+                                <tr class="hover:bg-gray-50"><td class="py-2 px-4 border-b border-gray-100">逆 × 虛</td><td class="py-2 px-4 border-b border-gray-100">修復整合</td><td class="py-2 px-4 border-b border-gray-100 font-bold text-red-700">停下來</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">九、最重要的原則</h3><p>這套卡牌最重要的不是「對不對」，而是：讓你回到自己的<strong>中宮興趣</strong>。<br>當你回到真正感興趣、有感覺、有生命力的狀態，你自然就會進入正確的節律。</p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十、關於「逆轉」的說明（重要）</h3><p>很多人會誤解「逆轉」。請記住：<strong>逆轉不是失敗，而是系統在換擋。</strong><br>它代表：需要休息、需要調整方向、需要釋放壓力、需要重建路徑。這是健康機制。</p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十一、關於「虛狀態」的說明</h3><p>虛狀態不是懶惰。<br>它是：靈感準備期、能量積累期、系統整合期。<br><strong>沒有虛，就沒有實。</strong></p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十二、使用這套卡牌的正確態度</h3>
+                    <p>請帶著這三種心態使用：<br>① <strong>輕鬆</strong>：不要神秘化。<br>② <strong>真實</strong>：如實面對自己的狀態。<br>③ <strong>行動</strong>：每次只做一個小動作。</p>
+                </div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十三、什麼時候不要使用卡牌？</h3><p>如果你處於：極度情緒失控、嚴重身體不適、醫療或法律緊急情況。<br>👉 <strong>請先處理現實問題。</strong> 卡牌不是替代現實決策的工具。</p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十四、結束語</h3><p>你的人生，本來就是一個不斷旋轉的如意雲。有時順，有時逆，有時擴展，有時收縮。<br>當你學會：在不同節律中與自己合作，你會發現：<br><strong>你不需要更努力，你只需要 更順流。</strong></p></div>
+                
+                <div><h3 class="text-lg font-bold text-red-800 mb-2">十五、提醒</h3><p>你已經在路上，這張卡只是提醒你此刻用哪一種方式繼續前進。</p></div>
+             </div>
+             
+             <div class="mt-10 text-center border-t pt-8">
+                 <button onclick="goHome()" class="btn-primary px-10 py-3 rounded-full text-lg font-bold tracking-wider">
+                     我了解了，回到首頁
+                 </button>
+             </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-gray-900 text-gray-400 py-6 text-center text-sm mt-auto">
+        <p>如意雲運行圖 · 興趣螺旋神諭卡</p>
+        <p class="mt-1 opacity-75">你不需要更努力，你只需要更順流。</p>
+    </footer>
+
+    <script>
+        // --- 閒置排隊預載 (Idle Queue Preloading) ---
+        // 加入 QR Code 預載
+        const preloadQueue = ['cards/666.gif', 'cards/000.jpg', 'cards/999.png'];
+        for (let i = 1; i <= 16; i++) {
+            let numStr = i.toString().padStart(3, '0');
+            preloadQueue.push('cards/' + numStr + '-1.jpg');
+            preloadQueue.push('cards/' + numStr + '-2.jpg');
+        }
+
+        function preloadNextImage() {
+            if (preloadQueue.length === 0) return; 
+            
+            const src = preloadQueue.shift();
+            const img = new Image();
+            img.decoding = "async";
+            
+            const processNext = () => {
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(preloadNextImage);
+                } else {
+                    setTimeout(preloadNextImage, 50);
+                }
+            };
+
+            img.onload = processNext;
+            img.onerror = processNext;
+            img.src = src;
+        }
+
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(preloadNextImage);
+                } else {
+                    preloadNextImage();
+                }
+            }, 1500);
+        });
+
+        // --- Web Audio API ---
+        let audioCtx = null;
+        let bgmInterval = null;
+        let isMuted = true;
+        let currentNoteIndex = 0;
+
+        const preludeNotes = [
+            60, 64, 67, 72, 76, 79, 84, 79, 76, 72, 67, 64,
+            65, 69, 72, 77, 81, 84, 89, 84, 81, 77, 72, 69
+        ];
+
+        function midiToFreq(m) { return Math.pow(2, (m - 69) / 12) * 440; }
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playNote(freq, time) {
+            if (isMuted || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            gainNode.gain.setValueAtTime(0, time);
+            gainNode.gain.linearRampToValueAtTime(0.1, time + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 3.0);
+
+            osc.start(time);
+            osc.stop(time + 3.0);
+        }
+
+        function scheduleBGM() {
+            if (isMuted) return;
+            const now = audioCtx.currentTime;
+            playNote(midiToFreq(preludeNotes[currentNoteIndex]), now);
+            currentNoteIndex = (currentNoteIndex + 1) % preludeNotes.length;
+        }
+
+        function playClick() {
+            if (isMuted || !audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.15, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+            osc.start(now);
+            osc.stop(now + 0.1);
+        }
+
+        function toggleSound() {
+            initAudio();
+            isMuted = !isMuted;
+            const btn = document.getElementById('sound-toggle-btn');
+
+            if (!isMuted) {
+                btn.innerHTML = '🔊 音樂: 開';
+                btn.classList.remove('bg-gray-500');
+                btn.classList.add('bg-green-600');
+                if (!bgmInterval) {
+                    currentNoteIndex = 0;
+                    bgmInterval = setInterval(scheduleBGM, 350); 
+                }
+            } else {
+                btn.innerHTML = '🔇 音樂: 關';
+                btn.classList.remove('bg-green-600');
+                btn.classList.add('bg-gray-500');
+                if (bgmInterval) {
+                    clearInterval(bgmInterval);
+                    bgmInterval = null;
+                }
+            }
+            playClick();
+        }
+
+        const TOTAL_CARDS = 16;
+        let currentMode = '';
+        let drawnCards = [];
+
+        function showScreen(screenId) {
+            document.getElementById('screen-home').classList.add('hidden-screen');
+            document.getElementById('screen-draw').classList.add('hidden-screen');
+            document.getElementById('screen-result').classList.add('hidden-screen');
+            document.getElementById('screen-manual').classList.add('hidden-screen'); 
+            
+            const targetScreen = document.getElementById(screenId);
+            targetScreen.classList.remove('hidden-screen');
+            
+            targetScreen.classList.remove('fade-in');
+            void targetScreen.offsetWidth;
+            targetScreen.classList.add('fade-in');
+        }
+
+        function showManual() {
+            playClick(); 
+            showScreen('screen-manual');
+            window.scrollTo(0, 0); 
+        }
+
+        function goHome() {
+            playClick();
+            currentMode = '';
+            drawnCards = [];
+            showScreen('screen-home');
+            window.scrollTo(0, 0);
+        }
+
+        function startMode(mode) {
+            playClick();
+            currentMode = mode;
+            
+            const titleEl = document.getElementById('draw-title');
+            const subtitleEl = document.getElementById('draw-subtitle');
+
+            if (mode === 'daily') {
+                titleEl.innerText = "每日一抽";
+                subtitleEl.innerText = "請靜心幾秒，心中默念：「我此刻最適合的運行方式是什麼？」";
+            } else if (mode === 'question') {
+                titleEl.innerText = "問題指引";
+                subtitleEl.innerText = "請在心中想著你現在遇到的問題（例如：我該推進嗎？該休息嗎？），然後抽牌。";
+            } else if (mode === 'double') {
+                titleEl.innerText = "雙卡法 (內外狀態)";
+                subtitleEl.innerText = "我們將為您抽出兩張牌：第一張代表您的「內在狀態」，第二張代表您的「外在狀態」。請靜心後抽牌。";
+            }
+
+            showScreen('screen-draw');
+            window.scrollTo(0, 0);
+        }
+
+        function executeDraw() {
+            playClick();
+            drawnCards = [];
+            const count = (currentMode === 'double') ? 2 : 1;
+            
+            let availableCards = Array.from({length: TOTAL_CARDS}, (_, i) => i + 1);
+            for (let i = 0; i < count; i++) {
+                const randomIndex = Math.floor(Math.random() * availableCards.length);
+                drawnCards.push(availableCards[randomIndex]);
+                availableCards.splice(randomIndex, 1);
+            }
+
+            renderResultScreen();
+            showScreen('screen-result');
+            window.scrollTo(0, 0);
+        }
+
+        function padNum(num) {
+            return num.toString().padStart(3, '0');
+        }
+
+        function renderResultScreen() {
+            const container = document.getElementById('cards-container');
+            container.innerHTML = ''; 
+
+            const titleEl = document.getElementById('result-title');
+            if (currentMode === 'daily') titleEl.innerText = "你的今日指引";
+            if (currentMode === 'question') titleEl.innerText = "針對問題的指引";
+            if (currentMode === 'double') titleEl.innerText = "內外狀態指引";
+
+            drawnCards.forEach((cardNumber, index) => {
+                const numStr = padNum(cardNumber);
+                
+                const frontImg = "cards/" + numStr + "-1.jpg";
+                const detailImg = "cards/" + numStr + "-2.jpg";
+                const backImg = "cards/000.jpg";
+
+                let labelHTML = '';
+                if (currentMode === 'double') {
+                    const labelText = index === 0 ? "第一張：內在狀態" : "第二張：外在狀態";
+                    labelHTML = `<h3 class="text-xl font-bold text-red-800 mb-4 text-center">${labelText}</h3>`;
+                }
+
+                const cardHTML = `
+                    <div class="flex flex-col items-center w-full max-w-[320px]">
+                        ${labelHTML}
+                        <div class="card-container" id="card-${index}" onclick="flipCard(${index})">
+                            <div class="card-inner">
+                                <div class="card-back">
+                                    <img src="${backImg}" alt="卡牌背面" class="card-image" decoding="async" loading="lazy" onerror="handleImgError(this, 'back', '000')">
+                                </div>
+                                <div class="card-front">
+                                    <img id="img-${index}" src="${frontImg}" data-front="${frontImg}" data-detail="${detailImg}" data-current="front" alt="卡牌正面" class="card-image" decoding="async" loading="lazy" onerror="handleImgError(this, 'front', '${numStr}')">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="controls-${index}" class="mt-6 opacity-0 transition-opacity duration-500 card-controls">
+                            <button id="toggle-btn-${index}" onclick="toggleImage(${index})" class="bg-gray-800 text-white px-5 py-2 rounded shadow hover:bg-gray-700 transition flex items-center gap-2">
+                                📖 查看牌面說明
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                container.innerHTML += cardHTML;
+            });
+        }
+
+        function flipCard(index) {
+            const cardEl = document.getElementById(`card-${index}`);
+            if (!cardEl.classList.contains('flipped')) {
+                playClick();
+                cardEl.classList.add('flipped');
+                setTimeout(() => {
+                    document.getElementById(`controls-${index}`).classList.remove('opacity-0');
+                }, 600);
+            }
+        }
+
+        function toggleImage(index) {
+            playClick();
+            const imgEl = document.getElementById(`img-${index}`);
+            const btnEl = document.getElementById(`toggle-btn-${index}`);
+            
+            const currentType = imgEl.getAttribute('data-current');
+            const frontSrc = imgEl.getAttribute('data-front');
+            const detailSrc = imgEl.getAttribute('data-detail');
+
+            imgEl.style.opacity = '0.5';
+            
+            setTimeout(() => {
+                if (currentType === 'front') {
+                    imgEl.src = detailSrc;
+                    imgEl.setAttribute('data-current', 'detail');
+                    btnEl.innerHTML = "🎴 回到牌面主圖";
+                    btnEl.classList.remove('bg-gray-800', 'hover:bg-gray-700');
+                    btnEl.classList.add('btn-primary');
+                } else {
+                    imgEl.src = frontSrc;
+                    imgEl.setAttribute('data-current', 'front');
+                    btnEl.innerHTML = "📖 查看牌面說明";
+                    btnEl.classList.remove('btn-primary');
+                    btnEl.classList.add('bg-gray-800', 'hover:bg-gray-700');
+                }
+                imgEl.style.opacity = '1';
+            }, 150);
+        }
+
+        // --- 拍照存檔功能 (已針對 CORS 與渲染失敗進行強化防護) ---
+        function takeScreenshot() {
+            playClick();
+
+            // 防護 1：阻擋本機直接開啟 (file://) 造成的 CORS 污染錯誤
+            if (window.location.protocol === 'file:') {
+                alert("【系統提示】您目前是直接點擊開啟本機檔案 (file://)。\n\n基於瀏覽器安全限制，這種模式下無法「自動存檔圖片」。\n\n👉 請將檔案上傳至伺服器(如 GitHub)，或暫時使用手機/電腦的內建截圖功能！");
+                return;
+            }
+
+            const btn = document.getElementById('screenshot-btn');
+            const originalBtnText = btn.innerHTML;
+            btn.innerHTML = '⏳ 處理中...';
+            btn.disabled = true;
+
+            const captureArea = document.getElementById('capture-area');
+            const subtitleEl = document.getElementById('result-subtitle');
+            const captureFooter = document.getElementById('capture-footer');
+            const timestampEl = document.getElementById('capture-timestamp');
+            const controls = document.querySelectorAll('.card-controls');
+            
+            // 處理 3D 翻轉可能導致 html2canvas 破圖的問題 (攤平圖層)
+            const inners = captureArea.querySelectorAll('.card-inner');
+            const fronts = captureArea.querySelectorAll('.card-front');
+            const backs = captureArea.querySelectorAll('.card-back');
+            const imgs = captureArea.querySelectorAll('img');
+
+            // 隱藏不必要的 UI
+            subtitleEl.style.display = 'none';
+            controls.forEach(ctrl => ctrl.style.display = 'none');
+            
+            const now = new Date();
+            const dateStr = now.getFullYear() + '/' + 
+                            String(now.getMonth() + 1).padStart(2, '0') + '/' + 
+                            String(now.getDate()).padStart(2, '0') + ' ' + 
+                            String(now.getHours()).padStart(2, '0') + ':' + 
+                            String(now.getMinutes()).padStart(2, '0');
+            timestampEl.innerText = "抽牌時間：" + dateStr;
+            
+            // 顯示截圖專用 Footer (時間與 QR Code)
+            captureFooter.classList.remove('hidden');
+
+            // 防護 2：移除所有會干擾 html2canvas 渲染的現代屬性
+            inners.forEach(el => { 
+                el.style.transition = 'none'; 
+                el.style.transform = 'none'; 
+                el.style.willChange = 'auto'; // 關鍵修復：拔除 will-change
+            });
+            fronts.forEach(el => { el.style.transform = 'none'; });
+            
+            // 關鍵修復：拔除 decoding 屬性，避免 Safari 崩潰
+            imgs.forEach(img => {
+                img.removeAttribute('decoding');
+                img.removeAttribute('loading');
+            });
+
+            document.querySelectorAll('#cards-container .card-container').forEach((container, idx) => {
+                if (container.classList.contains('flipped')) {
+                    backs[idx].style.display = 'none';
+                    fronts[idx].style.display = 'flex';
+                } else {
+                    backs[idx].style.display = 'flex';
+                    fronts[idx].style.display = 'none';
+                }
+            });
+
+            // 確保 DOM 狀態已更新，且強制增加等待時間 (從 300 改為 600ms)，確保 QR Code 渲染完畢
+            setTimeout(() => {
+                html2canvas(captureArea, {
+                    useCORS: true,       
+                    scale: window.devicePixelRatio > 1 ? 2 : 1, // 適應高畫質螢幕且避免行動端記憶體不足
+                    backgroundColor: '#FAFAFA',
+                    logging: false
+                }).then(canvas => {
+                    restoreUI();
+
+                    const fileName = `如意雲指引_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.jpg`;
+
+                    // 將 canvas 轉為 Blob 格式 (JPEG) 準備分享
+                    canvas.toBlob(blob => {
+                        if (!blob) {
+                            alert("圖片生成失敗！");
+                            return;
+                        }
+
+                        const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+                        // 檢查瀏覽器是否支援原生 Web Share API (可直接叫出分享至微信等軟體的選單)
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            navigator.share({
+                                files: [file],
+                                title: '如意雲神諭卡指引',
+                                text: '這是我剛剛抽到的如意雲指引，與你分享！'
+                            }).catch(err => {
+                                console.log('使用者取消分享或失敗:', err);
+                                // 若分享失敗或取消，退回傳統下載模式
+                                fallbackDownload(canvas, fileName);
+                            });
+                        } else {
+                            // 若不支援原生分享 (如 PC 端或特定瀏覽器)，直接使用傳統下載
+                            fallbackDownload(canvas, fileName);
+                        }
+                    }, 'image/jpeg', 0.92); // 0.92 為 JPEG 壓縮品質，平衡畫質與檔案大小
+
+                    // 傳統下載函數
+                    function fallbackDownload(cvs, name) {
+                        try {
+                            const dataUrl = cvs.toDataURL('image/jpeg', 0.92);
+                            const link = document.createElement('a');
+                            link.download = name;
+                            link.href = dataUrl;
+                            link.click();
+                        } catch (e) {
+                            console.error("Canvas toDataURL Failed:", e);
+                            alert("存檔失敗！可能是由於圖片跨域限制 (CORS)。\n建議您直接使用系統截圖功能。");
+                        }
+                    }
+
+                }).catch(err => {
+                    console.error("html2canvas 截圖失敗:", err);
+                    alert("存檔失敗，請稍後再試。\n(建議直接使用系統截圖)");
+                    restoreUI();
+                });
+            }, 300);
+
+            function restoreUI() {
+                subtitleEl.style.display = 'block';
+                controls.forEach(ctrl => ctrl.style.display = 'block');
+                captureFooter.classList.add('hidden'); // 隱藏 Footer
+                btn.innerHTML = originalBtnText;
+                btn.disabled = false;
+
+                inners.forEach(el => { 
+                    el.style.transition = ''; 
+                    el.style.transform = ''; 
+                    el.style.willChange = '';
+                });
+                fronts.forEach(el => { el.style.transform = ''; });
+                backs.forEach(el => { el.style.display = ''; });
+                fronts.forEach(el => { el.style.display = ''; });
+            }
+        }
+    </script>
+</body>
+</html>
